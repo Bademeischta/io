@@ -247,9 +247,15 @@ class Bot {
             if (batch.length <= i) batch.push(this.memory[this.memory.length - 1]);
         }
         batch.forEach(exp => {
-            const currentQ = this.brain.forward(exp.state); let targetQ = [...currentQ];
-            const nextQ = this.brain.forward(exp.nextState); const maxNextQ = Math.max(...nextQ);
-            for (let i = 0; i < 6; i++) targetQ[i] = exp.done ? exp.reward : exp.reward + this.gamma * maxNextQ;
+            const currentQ = this.brain.forward(exp.state);
+            const nextQ = this.brain.forward(exp.nextState);
+            const targetQ = [...currentQ];
+            
+            for (let i = 0; i < 6; i++) {
+                // Nur den spezifischen "Aktions-Kanal" updaten mit Bellman-Gleichung
+                // Nutze nextQ[i] als Schätzung für den zukünftigen Wert dieses Kanals
+                targetQ[i] = exp.done ? exp.reward : exp.reward + this.gamma * nextQ[i];
+            }
             this.brain.train(exp.state, targetQ);
         });
         this.epsilon = Math.max(0.1, this.epsilon * 0.9995); this.stats.trainingEpoch++;
@@ -424,6 +430,10 @@ setInterval(() => { const lb = Object.values(state.players).sort((a, b) => b.sco
 
 spawnFood(); BotManager.init();
 process.on('SIGINT', () => { log('system', 'Shutdown...'); io.emit('systemMessage', { text: '⚠️ Neustart...', color: '#ff0000' }); state.bots.forEach(b => b.save()); setTimeout(() => process.exit(0), 1000); });
-process.on('uncaughtException', (e) => { log('error', e.message); state.bots.forEach(b => b.save()); });
+process.on('uncaughtException', (e) => { 
+    log('error', `UNCAUGHT EXCEPTION: ${e.message}\n${e.stack}`); 
+    state.bots.forEach(b => b.save()); 
+    process.exit(1); 
+});
 app.use(express.static(path.join(__dirname, 'public')));
 server.listen(PORT, () => log('system', `Port ${PORT}`));

@@ -16,6 +16,11 @@ const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const powerUpNotice = document.getElementById('powerUpNotice');
 const spectatorOverlay = document.getElementById('spectatorOverlay');
+const mobileControls = document.getElementById('mobileControls');
+const joystickBase = document.getElementById('joystickBase');
+const joystickHandle = document.getElementById('joystickHandle');
+const mobileShoot = document.getElementById('mobileShoot');
+const mobileBoost = document.getElementById('mobileBoost');
 
 // --- SPIELZUSTAND ---
 let me = null;
@@ -47,6 +52,13 @@ function updateGlobalStatsUI() {
     document.getElementById('ltBestScore').innerText = Math.floor(stats.bestScore);
 }
 updateGlobalStatsUI();
+
+// --- MOBILE LOGIK ---
+let isMobile = false;
+let joystickActive = false;
+let joystickCenter = { x: 0, y: 0 };
+let joystickVector = { x: 0, y: 0 };
+const JOYSTICK_MAX_DIST = 75;
 
 // --- INTERPOLATION & CAMERA ---
 const interpolationBuffer = [];
@@ -148,12 +160,20 @@ function render() {
 
 function predictMe(dt) {
     if (isSpectating) return;
-    const worldMouseX = (mouse.x - canvas.width / 2) / camera.zoom + camera.x;
-    const worldMouseY = (mouse.y - canvas.height / 2) / camera.zoom + camera.y;
 
-    const dx = worldMouseX - me.x;
-    const dy = worldMouseY - me.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    let dx, dy, dist;
+
+    if (isMobile && joystickActive) {
+        dx = joystickVector.x;
+        dy = joystickVector.y;
+        dist = Math.sqrt(dx * dx + dy * dy);
+    } else {
+        const worldMouseX = (mouse.x - canvas.width / 2) / camera.zoom + camera.x;
+        const worldMouseY = (mouse.y - canvas.height / 2) / camera.zoom + camera.y;
+        dx = worldMouseX - me.x;
+        dy = worldMouseY - me.y;
+        dist = Math.sqrt(dx * dx + dy * dy);
+    }
 
     let speedMult = (window.DEBUG_SPEED_BOOST || 1.0);
     if (me.powerUps && me.powerUps.includes('speed')) speedMult *= 1.5;
@@ -303,6 +323,90 @@ function spawnExplosion(x, y, color, count = 10, speed = 5, size = 5) {
 }
 
 // --- INPUT HANDLING ---
+
+// Touch Erkennung
+window.addEventListener('touchstart', () => {
+    if (!isMobile) {
+        isMobile = true;
+        mobileControls.style.display = 'block';
+        console.log('[SYSTEM] Touch-Gerät erkannt');
+    }
+}, { once: true });
+
+// Joystick Logik
+joystickBase.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = joystickBase.getBoundingClientRect();
+    joystickCenter = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+    };
+    joystickActive = true;
+    updateJoystick(touch);
+});
+
+joystickBase.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (joystickActive) {
+        updateJoystick(e.touches[0]);
+    }
+});
+
+joystickBase.addEventListener('touchend', e => {
+    e.preventDefault();
+    joystickActive = false;
+    joystickHandle.style.left = '50%';
+    joystickHandle.style.top = '50%';
+    joystickVector = { x: 0, y: 0 };
+    if (gameActive) socket.emit('mouseMove', { x: me.x, y: me.y }); // Stop movement
+});
+
+function updateJoystick(touch) {
+    let dx = touch.clientX - joystickCenter.x;
+    let dy = touch.clientY - joystickCenter.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist > JOYSTICK_MAX_DIST) {
+        dx = (dx / dist) * JOYSTICK_MAX_DIST;
+        dy = (dy / dist) * JOYSTICK_MAX_DIST;
+    }
+
+    joystickHandle.style.left = (50 + (dx / JOYSTICK_MAX_DIST) * 50) + '%';
+    joystickHandle.style.top = (50 + (dy / JOYSTICK_MAX_DIST) * 50) + '%';
+
+    joystickVector = { x: dx, y: dy };
+
+    if (gameActive && me) {
+        // Send move to server (vector based)
+        const moveX = me.x + dx * 10;
+        const moveY = me.y + dy * 10;
+        socket.emit('mouseMove', { x: moveX, y: moveY });
+    }
+}
+
+// Mobile Buttons
+mobileShoot.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (gameActive && me) {
+        // Shoot in current movement direction or center
+        const rad = Math.atan2(joystickVector.y, joystickVector.x);
+        const tx = me.x + Math.cos(rad) * 100;
+        const ty = me.y + Math.sin(rad) * 100;
+        socket.emit('shoot', { targetX: tx, targetY: ty });
+    }
+});
+
+mobileBoost.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (gameActive && me) socket.emit('boost', { active: true });
+});
+
+mobileBoost.addEventListener('touchend', e => {
+    e.preventDefault();
+    if (gameActive && me) socket.emit('boost', { active: false });
+});
+
 window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
 window.addEventListener('mousedown', () => {
     if (!gameActive || !me || isChatting) return;

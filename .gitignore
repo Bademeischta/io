@@ -1,2 +1,7 @@
 node_modules
 npm_output.log
+data/bots/*.json
+data/backups/
+data/logs/*.log
+server.log
+server_new.log

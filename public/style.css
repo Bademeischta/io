@@ -254,9 +254,115 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .stats-box p { margin-bottom: 8px; font-size: 18px; }
 .killer { color: #e94560; font-weight: bold; }
 
+/* Mobile Controls */
+#mobileControls {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 40;
+}
+
+#joystickContainer {
+    position: absolute;
+    bottom: 50px;
+    left: 50px;
+    width: 150px;
+    height: 150px;
+    pointer-events: auto;
+}
+
+#joystickBase {
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    position: relative;
+}
+
+#joystickHandle {
+    width: 60px;
+    height: 60px;
+    background: rgba(233, 69, 96, 0.8);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 15px rgba(233, 69, 96, 0.5);
+}
+
+#mobileButtons {
+    position: absolute;
+    bottom: 50px;
+    right: 50px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    pointer-events: auto;
+}
+
+.mobile-btn {
+    width: 70px;
+    height: 70px;
+    background: rgba(15, 52, 96, 0.8);
+    border: 2px solid #e94560;
+    border-radius: 50%;
+    color: white;
+    font-size: 30px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-btn:active {
+    transform: scale(0.9);
+    background: #e94560;
+}
+
 /* Responsive adjustments */
-@media (max-width: 600px) {
-    #leaderboard, #stats { display: none; }
-    #bottomBar { width: 90%; }
-    #chatContainer { width: 200px; bottom: 80px; }
+@media (max-width: 800px) {
+    #leaderboard {
+        width: 150px;
+        top: 10px;
+        right: 10px;
+        padding: 10px;
+    }
+    #stats {
+        top: 10px;
+        left: 10px;
+        padding: 5px 10px;
+    }
+    #leaderboard h3 { font-size: 14px; }
+    #leaderboard li { font-size: 12px; }
+    #stats p { font-size: 12px; margin-bottom: 2px; }
+    
+    #bottomBar { width: 95%; bottom: 10px; }
+    .bar-container { height: 20px; margin-bottom: 5px; }
+    .bar-text { font-size: 10px; }
+
+    #chatContainer { width: 180px; bottom: 70px; left: 10px; }
+    #chatMessages { max-height: 80px; }
+}
+
+@media (max-width: 500px) {
+    h1 { font-size: 32px; }
+    #leaderboard { display: none; }
+    #stats { font-size: 10px; padding: 5px; }
+    #joystickContainer { bottom: 30px; left: 30px; width: 120px; height: 120px; }
+    #mobileButtons { bottom: 30px; right: 30px; gap: 10px; }
+    .mobile-btn { width: 60px; height: 60px; font-size: 24px; }
+}
+
+/* Fix for mobile input overlap */
+@media (max-height: 450px) {
+    .content { padding: 20px; }
+    h1 { font-size: 24px; margin-bottom: 10px; }
+    #instructions { display: none; }
 }
