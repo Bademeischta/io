@@ -1,0 +1,251 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #1a1a2e;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: white;
+}
+
+#gameCanvas {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: -1; /* Hinter dem UI */
+}
+
+/* Start Screen */
+#startScreen, #deathScreen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(22, 33, 62, 0.95);
+    padding: 40px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    min-width: 320px;
+}
+
+h1 {
+    font-size: 3rem;
+    margin-bottom: 20px;
+    color: #e94560;
+    text-shadow: 0 0 10px rgba(233, 69, 96, 0.5);
+}
+
+#nameInput {
+    padding: 12px;
+    font-size: 1.2rem;
+    border-radius: 5px;
+    border: none;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 20px;
+    background-color: #16213e;
+    color: white;
+    border-bottom: 3px solid #e94560;
+}
+
+#colorPicker {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 25px;
+}
+
+.color-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.color-btn:hover {
+    transform: scale(1.1);
+}
+
+.color-btn.selected {
+    border-color: white;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+#playButton, #respawnButton {
+    padding: 15px 40px;
+    font-size: 1.5rem;
+    background-color: #e94560;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    font-weight: bold;
+    width: 100%;
+}
+
+#playButton:hover, #respawnButton:hover:not(:disabled) {
+    background-color: #ff4d6d;
+}
+
+#playButton:active, #respawnButton:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+#respawnButton:disabled {
+    background-color: #555;
+    cursor: not-allowed;
+}
+
+#instructions {
+    margin-top: 30px;
+    text-align: left;
+    font-size: 0.9rem;
+    color: #ccc;
+}
+
+/* HUD */
+#statsOverlay {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background-color: rgba(22, 33, 62, 0.7);
+    padding: 15px;
+    border-radius: 10px;
+    pointer-events: none;
+}
+
+#statsOverlay p {
+    margin: 5px 0;
+}
+
+#leaderboard {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background-color: rgba(22, 33, 62, 0.7);
+    padding: 15px;
+    border-radius: 10px;
+    width: 200px;
+    pointer-events: none;
+}
+
+#leaderboard h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #e94560;
+    padding-bottom: 5px;
+}
+
+#leaderboardList {
+    padding-left: 25px;
+    margin-bottom: 0;
+}
+
+#leaderboardList li {
+    margin-bottom: 5px;
+}
+
+.me-highlight {
+    font-weight: bold;
+    color: #f1c40f;
+}
+
+#bottomHUD {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    pointer-events: none;
+}
+
+#xpLevelInfo {
+    background-color: #e94560;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-weight: bold;
+    font-size: 1.2rem;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+#progressContainer {
+    width: 300px;
+}
+
+#healthBarContainer, #xpBarContainer {
+    width: 100%;
+    background-color: #16213e;
+    height: 25px;
+    border-radius: 5px;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+#xpBarContainer {
+    height: 15px;
+}
+
+#healthBar {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #2ecc71, #27ae60);
+    transition: width 0.3s ease-out, background 0.5s;
+}
+
+#xpBar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #3498db, #2980b9);
+    transition: width 0.3s ease-out;
+}
+
+#healthText, #xpText {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+#minimap {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 200px;
+    height: 200px;
+    background-color: rgba(22, 33, 62, 0.7);
+    border: 2px solid #e94560;
+    border-radius: 5px;
+}
+
+/* Death Screen Stats */
+.stats {
+    margin: 20px 0;
+    font-size: 1.1rem;
+}
+
+.stats p {
+    margin: 10px 0;
+}
+
+.stats span {
+    font-weight: bold;
+    color: #e94560;
+}
+
+.killer {
+    color: #f1c40f !important;
+}
