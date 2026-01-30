@@ -1,0 +1,19 @@
+
+> schoolarena-io@1.0.0 start
+> node server.js
+
+[2026-01-30T07:50:10.957Z] [BOT] Neuer Bot erstellt: Bot_1 (hunter)
+[2026-01-30T07:50:10.962Z] [BOT] Neuer Bot erstellt: Bot_2 (farmer)
+[2026-01-30T07:50:10.964Z] [BOT] Neuer Bot erstellt: Bot_3 (tactician)
+[2026-01-30T07:50:10.967Z] [BOT] Neuer Bot erstellt: Bot_4 (wildcard)
+[2026-01-30T07:50:10.969Z] [BOT] Neuer Bot erstellt: Bot_5 (hunter)
+[2026-01-30T07:50:10.972Z] [BOT] Neuer Bot erstellt: Bot_6 (farmer)
+[2026-01-30T07:50:10.974Z] [BOT] Neuer Bot erstellt: Bot_7 (tactician)
+[2026-01-30T07:50:10.976Z] [BOT] Neuer Bot erstellt: Bot_8 (wildcard)
+[2026-01-30T07:50:10.979Z] [BOT] Neuer Bot erstellt: Bot_9 (hunter)
+[2026-01-30T07:50:10.982Z] [BOT] Neuer Bot erstellt: Bot_10 (farmer)
+[2026-01-30T07:50:10.985Z] [BOT] Neuer Bot erstellt: Bot_11 (tactician)
+[2026-01-30T07:50:10.987Z] [BOT] Neuer Bot erstellt: Bot_12 (wildcard)
+[2026-01-30T07:50:10.994Z] [SYSTEM] Server läuft auf Port 3000
+[2026-01-30T08:43:48.455Z] [SYSTEM] Bots automatisch gespeichert
+Terminated

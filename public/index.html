@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SchoolArena.io</title>
+    <title>SchoolArena.io | KI-Multiplayer</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 </head>
@@ -16,15 +16,19 @@
         <div class="content">
             <h1>SchoolArena.io</h1>
             <input type="text" id="nameInput" placeholder="Dein Name (max. 15 Zeichen)" maxlength="15">
-            <div id="colorPicker">
-                <!-- Farben werden per JS befüllt -->
-            </div>
+            <div id="colorPicker"></div>
             <button id="playButton">SPIELEN</button>
+            <div id="globalStats" class="stats-box" style="margin-top: 20px; font-size: 14px;">
+                <p>Lebenszeit Kills: <span id="ltKills">0</span></p>
+                <p>Bester Score: <span id="ltBestScore">0</span></p>
+            </div>
             <div id="instructions">
                 <h3>Steuerung:</h3>
                 <p>🖱️ Maus = Bewegung</p>
                 <p>🖱️ Linksklick = Schießen</p>
-                <p>⌨️ Leertaste = Boost (kostet Masse!)</p>
+                <p>⌨️ Leertaste = Boost</p>
+                <p>⌨️ ENTER = Chat</p>
+                <p>⌨️ D = Debug Modus</p>
             </div>
         </div>
     </div>
@@ -33,9 +37,7 @@
     <div id="hud" style="display: none;">
         <div id="leaderboard">
             <h3>🏆 TOP 5</h3>
-            <ul id="leaderboardList">
-                <!-- Beispieldaten -->
-            </ul>
+            <ul id="leaderboardList"></ul>
         </div>
 
         <div id="stats">
@@ -44,6 +46,13 @@
             <p>📶 Ping: <span id="ping">0</span>ms</p>
             <p>🌐 Online: <span id="onlineCount">0</span></p>
         </div>
+
+        <div id="chatContainer">
+            <div id="chatMessages"></div>
+            <input type="text" id="chatInput" placeholder="Nachricht..." maxlength="50" style="display: none;">
+        </div>
+
+        <div id="powerUpNotice"></div>
 
         <div id="bottomBar">
             <div class="bar-container">
@@ -60,15 +69,22 @@
     <!-- Death Screen -->
     <div id="deathScreen" class="overlay" style="display: none;">
         <div class="content">
-            <h1>💀 Du wurdest eliminiert!</h1>
+            <h1>💀 Eliminiert!</h1>
             <div class="stats-box">
                 <p>Score: <span id="finalScore">0</span> XP</p>
                 <p>Level: <span id="finalLevel">1</span></p>
                 <p>Kills: <span id="finalKills">0</span></p>
                 <p>Getötet von: <span id="killerName" class="killer">?</span></p>
             </div>
+            <p style="margin-bottom: 10px; font-style: italic; color: #888;">TAB drücken zum Beobachten</p>
             <button id="respawnButton" disabled>ERNEUT SPIELEN (3s)</button>
         </div>
+    </div>
+
+    <!-- Spectator Overlay -->
+    <div id="spectatorOverlay" style="display: none;">
+        <p>📺 Beobachte: <span id="spectatingName">?</span></p>
+        <p style="font-size: 12px; opacity: 0.7;">TAB = Nächster Spieler</p>
     </div>
 
     <!-- Minimap -->

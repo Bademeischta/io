@@ -1,6 +1,6 @@
 const socket = io();
 
-// DOM Elemente
+// --- DOM ELEMENTE ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const startScreen = document.getElementById('startScreen');
@@ -12,8 +12,12 @@ const deathScreen = document.getElementById('deathScreen');
 const respawnButton = document.getElementById('respawnButton');
 const minimapCanvas = document.getElementById('minimap');
 const mctx = minimapCanvas.getContext('2d');
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const powerUpNotice = document.getElementById('powerUpNotice');
+const spectatorOverlay = document.getElementById('spectatorOverlay');
 
-// Spielzustand
+// --- SPIELZUSTAND ---
 let me = null;
 let players = [];
 let food = [];
@@ -22,41 +26,54 @@ let worldSize = { width: 3000, height: 3000 };
 let gameActive = false;
 let config = {};
 let selectedColor = '#FF6B6B';
-let leaderboard = [];
 let particles = [];
+let debugMode = false;
+let lastFps = 0;
+let frameCount = 0;
+let lastFpsUpdate = Date.now();
+let serverTicks = 0;
+let lastTickUpdate = Date.now();
+let currentTPS = 0;
+let isSpectating = false;
+let spectatingId = null;
 
-// Interpolation & Prediction
-let lastUpdateTime = Date.now();
-const interpolationBuffer = [];
-const RENDER_DELAY = 100; // ms
-const camera = {
-    x: 0,
-    y: 0,
-    zoom: 1,
-    targetZoom: 1
+// --- PERSISTENZ (LocalStorage) ---
+let stats = JSON.parse(localStorage.getItem('schoolArena_stats')) || {
+    kills: 0, deaths: 0, bestScore: 0, totalScore: 0, games: 0
 };
+function saveStats() { localStorage.setItem('schoolArena_stats', JSON.stringify(stats)); }
+function updateGlobalStatsUI() {
+    document.getElementById('ltKills').innerText = stats.kills;
+    document.getElementById('ltBestScore').innerText = Math.floor(stats.bestScore);
+}
+updateGlobalStatsUI();
 
-// Input
+// --- INTERPOLATION & CAMERA ---
+const interpolationBuffer = [];
+const RENDER_DELAY = 100;
+const camera = { x: 0, y: 0, zoom: 1, targetZoom: 1 };
+let lastUpdateTime = Date.now();
+
+// --- INPUT ---
 const mouse = { x: 0, y: 0 };
 const keys = { space: false };
+let isChatting = false;
 
-// Farben initialisieren
+// --- INITIALISIERUNG ---
 const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F06292', '#AED581', '#FFD54F', '#4DB6AC', '#7986CB', '#9575CD', '#FF8A65'];
 colors.forEach(color => {
     const btn = document.createElement('button');
     btn.className = 'color-btn';
     btn.style.backgroundColor = color;
-    btn.dataset.color = color;
     if (color === selectedColor) btn.classList.add('active');
-    btn.addEventListener('click', () => {
+    btn.onclick = () => {
         document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         selectedColor = color;
-    });
+    };
     colorPicker.appendChild(btn);
 });
 
-// Canvas Größe anpassen
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -66,168 +83,71 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// Spiel beitreten
-playButton.addEventListener('click', () => {
-    const name = nameInput.value.trim() || 'Unbekannt';
-    socket.emit('joinGame', { name, color: selectedColor });
-    startScreen.style.display = 'none';
-    hud.style.display = 'block';
-    gameActive = true;
-});
-
-// Input Handling
-window.addEventListener('mousemove', (e) => {
-    mouse.x = e.clientX;
-    mouse.y = e.clientY;
-
-    if (gameActive && me) {
-        // Berechne Weltkoordinaten der Maus
-        const worldMouseX = (mouse.x - canvas.width / 2) / camera.zoom + camera.x;
-        const worldMouseY = (mouse.y - canvas.height / 2) / camera.zoom + camera.y;
-        socket.emit('mouseMove', { x: worldMouseX, y: worldMouseY });
-    }
-});
-
-window.addEventListener('mousedown', (e) => {
-    if (gameActive && me) {
-        const worldMouseX = (mouse.x - canvas.width / 2) / camera.zoom + camera.x;
-        const worldMouseY = (mouse.y - canvas.height / 2) / camera.zoom + camera.y;
-        socket.emit('shoot', { targetX: worldMouseX, targetY: worldMouseY });
-    }
-});
-
-window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') {
-        keys.space = true;
-        socket.emit('boost', { active: true });
-    }
-});
-
-window.addEventListener('keyup', (e) => {
-    if (e.code === 'Space') {
-        keys.space = false;
-        socket.emit('boost', { active: false });
-    }
-});
-
-// Partikel-System
-class Particle {
-    constructor(x, y, vx, vy, color, radius, lifespan) {
-        this.x = x;
-        this.y = y;
-        this.vx = vx;
-        this.vy = vy;
-        this.color = color;
-        this.radius = radius;
-        this.maxLifespan = lifespan;
-        this.lifespan = lifespan;
-    }
-
-    update(dt) {
-        this.x += this.vx * dt * 60;
-        this.y += this.vy * dt * 60;
-        this.lifespan -= dt * 60;
-    }
-
-    draw(ctx) {
-        const alpha = this.lifespan / this.maxLifespan;
-        ctx.save();
-        ctx.globalAlpha = Math.max(0, alpha);
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    }
-}
-
-function spawnExplosion(x, y, color, count, speed, size, lifespan) {
-    for (let i = 0; i < count; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const s = Math.random() * speed;
-        particles.push(new Particle(
-            x, y,
-            Math.cos(angle) * s,
-            Math.sin(angle) * s,
-            color,
-            Math.random() * size,
-            lifespan
-        ));
-    }
-}
-
-// Rendering Loop
+// --- CORE LOOPS ---
 function render() {
     const now = Date.now();
     const dt = (now - lastUpdateTime) / 1000;
     lastUpdateTime = now;
 
+    // FPS Berechnung
+    frameCount++;
+    if (now - lastFpsUpdate > 1000) {
+        lastFps = frameCount;
+        frameCount = 0;
+        lastFpsUpdate = now;
+        currentTPS = serverTicks;
+        serverTicks = 0;
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!gameActive || !me) {
-        requestAnimationFrame(render);
-        return;
+    if (gameActive && me) {
+        predictMe(dt);
+        const interpolatedPlayers = getInterpolatedPlayers(now - RENDER_DELAY);
+
+        // Kamera Update
+        let targetX = me.x, targetY = me.y, targetRadius = me.radius;
+        if (isSpectating) {
+            const target = interpolatedPlayers.find(p => p.id === spectatingId);
+            if (target) { targetX = target.x; targetY = target.y; targetRadius = target.radius; }
+        }
+
+        camera.x += (targetX + (me.vx || 0) * 15 - camera.x) * 0.1;
+        camera.y += (targetY + (me.vy || 0) * 15 - camera.y) * 0.1;
+        camera.targetZoom = Math.max(0.4, 1 - (targetRadius - 20) / 160);
+        camera.zoom += (camera.targetZoom - camera.zoom) * 0.05;
+
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.scale(camera.zoom, camera.zoom);
+        ctx.translate(-camera.x, -camera.y);
+
+        drawGrid();
+        food.forEach(drawFood);
+        
+        // Partikel
+        for (let i = particles.length - 1; i >= 0; i--) {
+            particles[i].update(dt);
+            particles[i].draw(ctx);
+            if (particles[i].lifespan <= 0) particles.splice(i, 1);
+        }
+
+        projectiles.forEach(drawProjectile);
+        interpolatedPlayers.forEach(p => { if (p.id !== me.id) drawPlayer(p); });
+        if (!isSpectating) drawPlayer(me, true);
+
+        if (debugMode) drawDebug();
+
+        ctx.restore();
+        drawMinimap(interpolatedPlayers);
+        updateUI();
     }
-
-    // 1. Client-Side Prediction für eigenen Spieler
-    predictMe(dt);
-
-    // 2. Interpolation für andere Spieler
-    const renderTime = now - RENDER_DELAY;
-    const interpolatedPlayers = getInterpolatedPlayers(renderTime);
-
-    // Kamera Update (folgt dem "vorhergesagten" Ich mit Antizipation)
-    const targetCamX = me.x + me.vx * 15;
-    const targetCamY = me.y + me.vy * 15;
-    camera.x += (targetCamX - camera.x) * 0.1;
-    camera.y += (targetCamY - camera.y) * 0.1;
-
-    // Zoom berechnen
-    camera.targetZoom = Math.max(0.4, 1 - (me.radius - 20) / 160);
-    camera.zoom += (camera.targetZoom - camera.zoom) * 0.05;
-
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.scale(camera.zoom, camera.zoom);
-    ctx.translate(-camera.x, -camera.y);
-
-    // 1. Grid zeichnen
-    drawGrid();
-
-    // 2. Futter zeichnen
-    food.forEach(f => drawFood(f));
-
-    // 3. Partikel zeichnen
-    for (let i = particles.length - 1; i >= 0; i--) {
-        particles[i].update(dt);
-        particles[i].draw(ctx);
-        if (particles[i].lifespan <= 0) particles.splice(i, 1);
-    }
-
-    // 4. Projektile zeichnen
-    projectiles.forEach(pr => drawProjectile(pr));
-
-    // 5. Andere Spieler zeichnen
-    interpolatedPlayers.forEach(p => {
-        if (p.id !== me.id) drawPlayer(p);
-    });
-
-    // 5. Eigenen Spieler zeichnen (immer oben)
-    drawPlayer(me, true);
-
-    ctx.restore();
-
-    // Minimap & UI
-    drawMinimap();
-    updateUI();
 
     requestAnimationFrame(render);
 }
 
 function predictMe(dt) {
-    if (!me) return;
-
-    // Wir simulieren die Bewegung grob vor, bis das nächste Server-Update kommt
+    if (isSpectating) return;
     const worldMouseX = (mouse.x - canvas.width / 2) / camera.zoom + camera.x;
     const worldMouseY = (mouse.y - canvas.height / 2) / camera.zoom + camera.y;
 
@@ -235,304 +155,311 @@ function predictMe(dt) {
     const dy = worldMouseY - me.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    let speed = config.PLAYER_BASE_SPEED / (1 + me.mass / 500);
-    if (keys.space && me.mass > 30) {
-        speed *= config.BOOST_MULTIPLIER;
-    }
+    let speedMult = (window.DEBUG_SPEED_BOOST || 1.0);
+    if (me.powerUps && me.powerUps.includes('speed')) speedMult *= 1.5;
+
+    let speed = config.PLAYER_BASE_SPEED / (1 + me.mass / 500) * speedMult;
+    if (keys.space && me.mass > 30) speed *= config.BOOST_MULTIPLIER;
 
     if (dist > 5) {
         const targetVx = (dx / dist) * speed;
         const targetVy = (dy / dist) * speed;
         me.vx += (targetVx - me.vx) * 0.1;
         me.vy += (targetVy - me.vy) * 0.1;
-    } else {
-        me.vx *= 0.95;
-        me.vy *= 0.95;
-    }
+    } else { me.vx *= 0.95; me.vy *= 0.95; }
 
-    me.x += me.vx;
-    me.y += me.vy;
-
-    // Grenzen checken
+    me.x += me.vx; me.y += me.vy;
     me.x = Math.max(me.radius, Math.min(worldSize.width - me.radius, me.x));
     me.y = Math.max(me.radius, Math.min(worldSize.height - me.radius, me.y));
+
+    if (window.DEBUG_GOD_MODE) me.health = me.mass;
 }
 
-function getInterpolatedPlayers(renderTime) {
-    if (interpolationBuffer.length < 2) return players;
-
-    // Finde die zwei Snapshots, zwischen denen die renderTime liegt
-    let i = 0;
-    for (; i < interpolationBuffer.length - 1; i++) {
-        if (interpolationBuffer[i + 1].timestamp > renderTime) break;
-    }
-
-    const snap0 = interpolationBuffer[i];
-    const snap1 = interpolationBuffer[i + 1];
-
-    if (snap0 && snap1 && renderTime >= snap0.timestamp && renderTime <= snap1.timestamp) {
-        const t = (renderTime - snap0.timestamp) / (snap1.timestamp - snap0.timestamp);
-
-        return snap1.players.map(p1 => {
-            const p0 = snap0.players.find(p => p.id === p1.id);
-            if (!p0) return p1;
-
-            return {
-                ...p1,
-                x: p0.x + (p1.x - p0.x) * t,
-                y: p0.y + (p1.y - p0.y) * t,
-                radius: p0.radius + (p1.radius - p0.radius) * t,
-                health: p0.health + (p1.health - p0.health) * t
-            };
-        });
-    }
-
-    return players;
-}
-
+// --- RENDERING HELPER ---
 function drawGrid() {
-    const size = 50;
+    const size = 200;
     ctx.beginPath();
     ctx.strokeStyle = '#16213e';
-    ctx.lineWidth = 1;
-
-    // Bereich um die Kamera eingrenzen für Performance
-    const startX = Math.floor((camera.x - (canvas.width / 2) / camera.zoom) / size) * size;
-    const endX = Math.ceil((camera.x + (canvas.width / 2) / camera.zoom) / size) * size;
-    const startY = Math.floor((camera.y - (canvas.height / 2) / camera.zoom) / size) * size;
-    const endY = Math.ceil((camera.y + (canvas.height / 2) / camera.zoom) / size) * size;
-
-    for (let x = Math.max(0, startX); x <= Math.min(worldSize.width, endX); x += size) {
-        ctx.moveTo(x, Math.max(0, startY));
-        ctx.lineTo(x, Math.min(worldSize.height, endY));
-    }
-    for (let y = Math.max(0, startY); y <= Math.min(worldSize.height, endY); y += size) {
-        ctx.moveTo(Math.max(0, startX), y);
-        ctx.lineTo(Math.min(worldSize.width, endX), y);
-    }
+    ctx.lineWidth = 2;
+    for (let x = 0; x <= worldSize.width; x += size) { ctx.moveTo(x, 0); ctx.lineTo(x, worldSize.height); }
+    for (let y = 0; y <= worldSize.height; y += size) { ctx.moveTo(0, y); ctx.lineTo(worldSize.width, y); }
     ctx.stroke();
-
-    // Weltgrenze
-    ctx.strokeStyle = '#e94560';
-    ctx.lineWidth = 5;
-    ctx.strokeRect(0, 0, worldSize.width, worldSize.height);
+    ctx.strokeStyle = '#e94560'; ctx.lineWidth = 10; ctx.strokeRect(0, 0, worldSize.width, worldSize.height);
 }
 
 function drawFood(f) {
     ctx.fillStyle = f.color;
-    ctx.beginPath();
-    if (f.shape === 'circle') {
-        ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
-    } else if (f.shape === 'square') {
-        ctx.rect(f.x - f.radius, f.y - f.radius, f.radius * 2, f.radius * 2);
-    } else {
-        // Vereinfacht für Performance: Rest auch Kreise
-        ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
+    if (f.isPowerUp) {
+        ctx.save();
+        ctx.shadowBlur = 15; ctx.shadowColor = '#fff';
+        ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 200) * 0.4;
     }
+    ctx.beginPath();
+    if (f.shape === 'square') ctx.rect(f.x - f.radius, f.y - f.radius, f.radius * 2, f.radius * 2);
+    else ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
     ctx.fill();
+    if (f.isPowerUp) ctx.restore();
 }
 
 function drawPlayer(p, isMe = false) {
     ctx.save();
-
-    // Glow Effekt
+    // Glow
     ctx.shadowBlur = isMe ? 25 : 15;
-    ctx.shadowColor = p.color;
+    if (p.onFire) { ctx.shadowBlur = 20 + Math.sin(Date.now() / 100) * 10; ctx.shadowColor = '#ff6600'; }
+    else ctx.shadowColor = p.color;
 
     // Körper
     ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0;
 
+    // Schild
+    if (p.powerUps && p.powerUps.includes('shield')) {
+        ctx.strokeStyle = '#00f2ff'; ctx.lineWidth = 4; ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius + 8, Date.now() / 200, Date.now() / 200 + Math.PI * 1.5); ctx.stroke();
+    }
+
     // Health Ring
-    const healthPercent = p.health / p.mass;
-    ctx.strokeStyle = healthPercent > 0.66 ? '#2ecc71' : (healthPercent > 0.33 ? '#f1c40f' : '#e74c3c');
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius + 5, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * healthPercent));
-    ctx.stroke();
+    const hpPerc = p.health / p.mass;
+    ctx.strokeStyle = hpPerc > 0.6 ? '#2ecc71' : (hpPerc > 0.3 ? '#f1c40f' : '#e74c3c');
+    ctx.lineWidth = 3; ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius + 4, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * hpPerc)); ctx.stroke();
 
     // Name & Level
-    ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.max(12, p.radius / 2)}px Segoe UI`;
-    ctx.textAlign = 'center';
-    ctx.fillText(p.name, p.x, p.y - p.radius - 20);
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, p.radius / 2)}px Segoe UI`; ctx.textAlign = 'center';
+    let nameTag = p.name + (p.onFire ? ' 🔥' : '');
+    ctx.fillText(nameTag, p.x, p.y - p.radius - 20);
+    ctx.font = `bold ${Math.max(10, p.radius / 2.5)}px Segoe UI`;
     ctx.fillText(`Lvl ${p.level}`, p.x, p.y - p.radius - 5);
-
     ctx.restore();
 }
 
 function drawProjectile(pr) {
-    ctx.fillStyle = pr.color;
-    ctx.globalAlpha = 0.8;
-    ctx.beginPath();
-    ctx.arc(pr.x, pr.y, pr.radius, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = pr.color; ctx.globalAlpha = 0.8;
+    ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.radius, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1.0;
 }
 
-function drawMinimap() {
+function drawMinimap(allPlayers) {
     mctx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
     const scale = minimapCanvas.width / worldSize.width;
-
-    // Futter (sehr kleine Punkte)
-    mctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-    food.forEach(f => {
-        mctx.fillRect(f.x * scale, f.y * scale, 1, 1);
-    });
-
-    // Spieler
-    players.forEach(p => {
+    allPlayers.forEach(p => {
         mctx.fillStyle = p.color;
-        const size = p.id === me.id ? 4 : 2;
-        mctx.beginPath();
-        mctx.arc(p.x * scale, p.y * scale, size, 0, Math.PI * 2);
-        mctx.fill();
+        const size = (me && p.id === me.id) ? 4 : 2;
+        mctx.beginPath(); mctx.arc(p.x * scale, p.y * scale, size, 0, Math.PI * 2); mctx.fill();
     });
 }
 
 function updateUI() {
     if (!me) return;
-
-    // Health Bar
-    const healthBar = document.getElementById('healthBar');
-    const healthText = document.getElementById('healthText');
-    const healthPercent = (me.health / me.mass) * 100;
-    healthBar.style.width = `${healthPercent}%`;
-    healthText.innerText = `${Math.floor(me.health)}/${Math.floor(me.mass)}`;
-
-    healthBar.className = 'bar ' + (healthPercent > 66 ? 'green' : (healthPercent > 33 ? 'yellow' : 'red'));
-
-    // XP Bar
-    const xpBar = document.getElementById('xpBar');
-    const xpText = document.getElementById('xpText');
-    const levelText = document.getElementById('levelText');
-
-    // Level-Fortschritt berechnen
-    const currentLevelScore = Math.pow(me.level - 1, 2) * 100;
-    const nextLevelScore = Math.pow(me.level, 2) * 100;
-    const levelProgress = ((me.score - currentLevelScore) / (nextLevelScore - currentLevelScore)) * 100;
-
-    xpBar.style.width = `${levelProgress}%`;
-    xpText.innerText = `${Math.floor(me.score)} XP`;
-    levelText.innerText = me.level;
-
-    // Stats
     document.getElementById('killCount').innerText = me.kills;
     document.getElementById('onlineCount').innerText = players.length;
+    document.getElementById('healthBar').style.width = `${(me.health / me.mass) * 100}%`;
+    document.getElementById('healthText').innerText = `${Math.floor(me.health)}/${Math.floor(me.mass)}`;
+    
+    const curLvlXp = Math.pow(me.level - 1, 2) * 100;
+    const nextLvlXp = Math.pow(me.level, 2) * 100;
+    const progress = ((me.score - curLvlXp) / (nextLvlXp - curLvlXp)) * 100;
+    document.getElementById('xpBar').style.width = `${progress}%`;
+    document.getElementById('xpText').innerText = `${Math.floor(me.score)} XP`;
+    document.getElementById('levelText').innerText = me.level;
 }
 
-// Socket Events
-socket.on('initGame', (data) => {
-    me = { id: data.yourId, x: 0, y: 0, radius: 20 };
-    worldSize = data.worldSize;
-    config = data.config;
+function drawDebug() {
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(10, 100, 200, 160);
+    ctx.fillStyle = '#0f0'; ctx.font = '12px monospace';
+    ctx.fillText(`FPS: ${lastFps}`, 20, 120);
+    ctx.fillText(`TPS: ${currentTPS}`, 20, 135);
+    ctx.fillText(`POS: ${Math.floor(me.x)}, ${Math.floor(me.y)}`, 20, 150);
+    ctx.fillText(`MASSE: ${Math.floor(me.mass)}`, 20, 165);
+    ctx.fillText(`ZOOM: ${camera.zoom.toFixed(2)}`, 20, 180);
+    ctx.fillText(`OBJEKTE: P:${players.length} F:${food.length} Pr:${projectiles.length}`, 20, 195);
+    if (window.performance && window.performance.memory) {
+        ctx.fillText(`MEM: ${Math.round(window.performance.memory.usedJSHeapSize / 1048576)} MB`, 20, 210);
+    }
+    ctx.restore();
+}
+
+// --- PARTIKEL SYSTEM ---
+class Particle {
+    constructor(x, y, vx, vy, color, radius, lifespan) {
+        this.x = x; this.y = y; this.vx = vx; this.vy = vy; this.color = color; this.radius = radius;
+        this.lifespan = lifespan; this.maxLifespan = lifespan;
+    }
+    update(dt) { this.x += this.vx; this.y += this.vy; this.lifespan -= dt * 60; }
+    draw(ctx) {
+        ctx.save(); ctx.globalAlpha = Math.max(0, this.lifespan / this.maxLifespan);
+        ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    }
+}
+function spawnExplosion(x, y, color, count = 10, speed = 5, size = 5) {
+    for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const s = Math.random() * speed;
+        particles.push(new Particle(x, y, Math.cos(angle) * s, Math.sin(angle) * s, color, Math.random() * size, 30 + Math.random() * 30));
+    }
+}
+
+// --- INPUT HANDLING ---
+window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+window.addEventListener('mousedown', () => {
+    if (!gameActive || !me || isChatting) return;
+    const wx = (mouse.x - canvas.width / 2) / camera.zoom + camera.x;
+    const wy = (mouse.y - canvas.height / 2) / camera.zoom + camera.y;
+    socket.emit('shoot', { targetX: wx, targetY: wy });
+});
+window.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !isChatting) { keys.space = true; socket.emit('boost', { active: true }); }
+    if (e.code === 'Enter') {
+        if (!isChatting) {
+            isChatting = true; chatInput.style.display = 'block'; chatInput.focus();
+        } else {
+            if (chatInput.value.trim()) socket.emit('chat', chatInput.value);
+            chatInput.value = ''; chatInput.style.display = 'none'; isChatting = false;
+        }
+    }
+    if (e.code === 'Escape' && isChatting) { chatInput.value = ''; chatInput.style.display = 'none'; isChatting = false; }
+    if (e.key.toLowerCase() === 'd') debugMode = !debugMode;
+    if (e.code === 'Tab' && isSpectating) {
+        e.preventDefault();
+        const idx = players.findIndex(p => p.id === spectatingId);
+        const next = players[(idx + 1) % players.length];
+        if (next) { spectatingId = next.id; document.getElementById('spectatingName').innerText = next.name; }
+    }
+});
+window.addEventListener('keyup', e => { if (e.code === 'Space') { keys.space = false; socket.emit('boost', { active: false }); } });
+
+playButton.onclick = () => {
+    const name = nameInput.value.trim() || 'Unbekannt';
+    socket.emit('joinGame', { name, color: selectedColor });
+    startScreen.style.display = 'none'; hud.style.display = 'block'; gameActive = true;
+    isSpectating = false; spectatorOverlay.style.display = 'none';
+    stats.games++; saveStats();
+};
+
+respawnButton.onclick = () => {
+    deathScreen.style.display = 'none'; startScreen.style.display = 'flex';
+    resetState();
+};
+
+function resetState() {
+    me = null; players = []; food = []; projectiles = []; particles = [];
+    interpolationBuffer.length = 0; gameActive = false;
+    camera.x = 0; camera.y = 0; camera.zoom = 1;
+}
+
+// --- SOCKET EVENTS ---
+socket.on('initGame', data => {
+    config = data.config; worldSize = data.worldSize;
+    me = { id: data.yourId, x: 0, y: 0, radius: 20, mass: 100, health: 100, score: 0, kills: 0, level: 1 };
 });
 
-socket.on('gameUpdate', (data) => {
+socket.on('gameUpdate', data => {
+    serverTicks++;
     interpolationBuffer.push(data);
     while (interpolationBuffer.length > 10) interpolationBuffer.shift();
-
-    // Check für neue Projektile (für Mündungsfeuer-Effekt)
-    if (data.projectiles.length > projectiles.length) {
-        const newProj = data.projectiles[data.projectiles.length - 1];
-        if (me && newProj.ownerId === me.id) {
-            spawnExplosion(me.x, me.y, me.color, 5, 2, 2, 20);
-        }
-    }
-
-    projectiles = data.projectiles;
-    food = data.food;
-
+    
+    food = data.food; projectiles = data.projectiles;
+    players = data.players;
     const serverMe = data.players.find(p => p.id === me.id);
     if (serverMe) {
-        // Boost Trail
-        if (serverMe.boostActive) {
-            spawnExplosion(serverMe.x, serverMe.y, serverMe.color, 1, 1, 5, 40);
-        }
-
-        // Sanfte Korrektur der vorhergesagten Position (Server-Reconciliation)
-        if (me) {
-            me.x += (serverMe.x - me.x) * 0.2;
-            me.y += (serverMe.y - me.y) * 0.2;
-            me.mass = serverMe.mass;
-            me.health = serverMe.health;
-            me.score = serverMe.score;
-            me.kills = serverMe.kills;
-            me.level = serverMe.level;
-            me.radius = serverMe.radius;
-        } else {
-            me = serverMe;
-        }
+        if (serverMe.boostActive) spawnExplosion(serverMe.x, serverMe.y, serverMe.color, 1, 1, 3);
+        me.x += (serverMe.x - me.x) * 0.2; me.y += (serverMe.y - me.y) * 0.2;
+        Object.assign(me, serverMe);
     }
-
-    players = data.players;
 });
 
-socket.on('leaderboardUpdate', (data) => {
-    leaderboard = data;
-    const list = document.getElementById('leaderboardList');
-    list.innerHTML = '';
-    leaderboard.slice(0, 5).forEach((entry, i) => {
-        const li = document.createElement('li');
-        if (me && entry.name === me.name) li.className = 'me';
-        li.innerHTML = `<span>${i + 1}. ${entry.name}</span> <span>${Math.floor(entry.score)}</span>`;
-        list.appendChild(li);
-    });
-});
-
-socket.on('playerDied', (data) => {
+socket.on('playerDied', data => {
     if (me && data.id === me.id) {
-        gameActive = false;
-        deathScreen.style.display = 'flex';
-        hud.style.display = 'none';
-
+        gameActive = false; deathScreen.style.display = 'flex'; hud.style.display = 'none';
         document.getElementById('finalScore').innerText = Math.floor(data.stats.score);
         document.getElementById('finalLevel').innerText = Math.floor(Math.sqrt(data.stats.score / 100)) + 1;
         document.getElementById('finalKills').innerText = data.stats.kills;
         document.getElementById('killerName').innerText = data.killerName;
+        
+        // Stats update
+        stats.kills += data.stats.kills; stats.deaths++;
+        stats.totalScore += data.stats.score;
+        if (data.stats.score > stats.bestScore) stats.bestScore = data.stats.score;
+        saveStats(); updateGlobalStatsUI();
 
-        // Respawn Timer
-        let timeLeft = 3;
-        respawnButton.disabled = true;
-        respawnButton.innerText = `ERNEUT SPIELEN (${timeLeft}s)`;
-
+        let timeLeft = 3; respawnButton.disabled = true;
         const timer = setInterval(() => {
             timeLeft--;
-            if (timeLeft <= 0) {
-                clearInterval(timer);
-                respawnButton.disabled = false;
-                respawnButton.innerText = 'ERNEUT SPIELEN';
-            } else {
-                respawnButton.innerText = `ERNEUT SPIELEN (${timeLeft}s)`;
-            }
+            if (timeLeft <= 0) { clearInterval(timer); respawnButton.disabled = false; respawnButton.innerText = 'ERNEUT SPIELEN'; }
+            else respawnButton.innerText = `ERNEUT SPIELEN (${timeLeft}s)`;
         }, 1000);
-    } else {
-        // Explosion für andere Spieler
-        const victim = players.find(p => p.id === data.id);
-        if (victim) {
-            spawnExplosion(victim.x, victim.y, victim.color, 30, 5, 10, 100);
+
+        // Spectator start
+        isSpectating = true;
+        const other = players.find(p => p.id !== me.id);
+        if (other) {
+            spectatingId = other.id; spectatorOverlay.style.display = 'block';
+            document.getElementById('spectatingName').innerText = other.name;
         }
+    } else {
+        const victim = players.find(p => p.id === data.id);
+        if (victim) spawnExplosion(victim.x, victim.y, victim.color, 30, 8, 10);
     }
 });
 
-respawnButton.addEventListener('click', () => {
-    deathScreen.style.display = 'none';
-    startScreen.style.display = 'flex';
+socket.on('chat', data => {
+    const msg = document.createElement('div'); msg.className = 'chat-msg';
+    msg.innerHTML = `<span style="color:${data.color}; font-weight:bold">${data.name}:</span> ${data.message}`;
+    chatMessages.prepend(msg);
+    setTimeout(() => msg.style.opacity = '0.5', 10000);
+    if (chatMessages.childNodes.length > 20) chatMessages.lastChild.remove();
 });
 
-// Ping Messung
+socket.on('systemMessage', data => {
+    const msg = document.createElement('div'); msg.className = 'chat-msg';
+    msg.style.color = data.color; msg.style.fontStyle = 'italic'; msg.innerText = data.text;
+    chatMessages.prepend(msg);
+    if (data.text.includes('ERHALTEN')) {
+        powerUpNotice.innerText = data.text; powerUpNotice.style.color = data.color;
+        setTimeout(() => { if (powerUpNotice.innerText === data.text) powerUpNotice.innerText = ''; }, 3000);
+    }
+});
+
+socket.on('leaderboardUpdate', data => {
+    const list = document.getElementById('leaderboardList'); list.innerHTML = '';
+    data.slice(0, 5).forEach((entry, i) => {
+        const li = document.createElement('li'); if (me && entry.name === me.name) li.className = 'me';
+        li.innerHTML = `<span>${i + 1}. ${entry.name}${entry.isBot ? ' 🤖' : ''}</span> <span>${Math.floor(entry.score)}</span>`;
+        list.appendChild(li);
+    });
+});
+
+socket.on('error', msg => alert(msg));
+
 setInterval(() => {
     const start = Date.now();
-    socket.emit('ping', () => {
-        document.getElementById('ping').innerText = Date.now() - start;
-    });
+    socket.emit('ping', () => { document.getElementById('ping').innerText = Date.now() - start; });
 }, 2000);
+socket.on('ping', cb => { if (typeof cb === 'function') cb(); });
 
-socket.on('ping', (cb) => {
-    if (typeof cb === 'function') cb();
-});
+function getInterpolatedPlayers(renderTime) {
+    if (interpolationBuffer.length < 2) return players;
+    let i = 0;
+    for (; i < interpolationBuffer.length - 1; i++) { if (interpolationBuffer[i + 1].timestamp > renderTime) break; }
+    const snap0 = interpolationBuffer[i], snap1 = interpolationBuffer[i + 1];
+    if (snap0 && snap1 && renderTime >= snap0.timestamp && renderTime <= snap1.timestamp) {
+        const t = (renderTime - snap0.timestamp) / (snap1.timestamp - snap0.timestamp);
+        return snap1.players.map(p1 => {
+            const p0 = snap0.players.find(p => p.id === p1.id);
+            if (!p0) return p1;
+            return { ...p1, x: p0.x + (p1.x - p0.x) * t, y: p0.y + (p1.y - p0.y) * t, radius: p0.radius + (p1.radius - p0.radius) * t, health: p0.health + (p1.health - p0.health) * t };
+        });
+    }
+    return players;
+}
+
+// --- DEBUG COMMANDS ---
+window.DEBUG_GOD_MODE = false;
+window.DEBUG_SPEED_BOOST = 1.0;
+window.DEBUG_TELEPORT = (x, y) => { if (me) { me.x = x; me.y = y; } };
+window.DEBUG_SPAWN_BOT = () => socket.emit('debugSpawnBot');
 
 requestAnimationFrame(render);
